@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Super Slide Web Game</title>
+<style>
+    :root {
+        --board-bg: #1a1a1a;
+        --device-bg: #2c2c2e;
+        --cell-size: min(18vw, 8vh, 70px); /* Responsive tile size */
+        --gap: calc(var(--cell-size) * 0.05);
+        --board-padding: calc(var(--cell-size) * 0.15);
+        
+        --color-red: #ff3b30;
+        --color-blue: #0a84ff;
+        --color-yellow: #ffd60a;
+        --color-empty: #1a1a1a;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none; /* Prevent browser scrolling/zooming on the game */
+    }
+
+    body {
+        background-color: #f0f0f5;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Device Housing */
+    .device {
+        background: var(--device-bg);
+        padding: 20px;
+        border-radius: 30px;
+        box-shadow: 
+            20px 20px 60px #c8c8cc,
+            -20px -20px 60px #ffffff,
+            inset 2px 2px 5px rgba(255,255,255,0.1),
+            inset -2px -2px 5px rgba(0,0,0,0.5);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+    }
+
+    /* Top Control Panel */
+    .control-panel {
+        display: flex;
+        width: 100%;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 0 10px;
+    }
+
+    /* LED Mini Map */
+    .led-map {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        grid-template-rows: repeat(5, 1fr);
+        gap: 2px;
+        background: #000;
+        padding: 8px;
+        border-radius: 12px;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        width: calc(var(--cell-size) * 1.5);
+        height: calc(var(--cell-size) * 1.875);
+    }
+
+    .led-pixel {
+        border-radius: 2px;
+        background: #333;
+    }
+
+    /* Buttons and Info */
+    .controls {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 15px;
+    }
+
+    .level-info {
+        color: #fff;
+        font-size: 1.2rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    .btn-group {
+        display: flex;
+        gap: 15px;
+    }
+
+    .btn {
+        background: #1a1a1a;
+        color: #fff;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        box-shadow: 3px 3px 6px rgba(0,0,0,0.6), -2px -2px 5px rgba(255,255,255,0.1);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .btn:active {
+        box-shadow: inset 3px 3px 6px rgba(0,0,0,0.6), inset -2px -2px 5px rgba(255,255,255,0.1);
+    }
+
+    /* Game Board */
+    .board-container {
+        position: relative;
+        width: calc(var(--cell-size) * 4 + var(--board-padding) * 2);
+        height: calc(var(--cell-size) * 5 + var(--board-padding) * 2);
+        background: var(--board-bg);
+        border-radius: 15px;
+        box-shadow: inset 5px 5px 15px rgba(0,0,0,0.8), inset -2px -2px 10px rgba(255,255,255,0.1);
+        padding: var(--board-padding);
+        overflow: visible;
+    }
+
+    /* Target Exit Indicator */
+    .exit-zone {
+        position: absolute;
+        bottom: -15px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(var(--cell-size) * 2 - var(--gap) * 2);
+        height: 20px;
+        background: repeating-linear-gradient(
+            45deg,
+            #333,
+            #333 5px,
+            #111 5px,
+            #111 10px
+        );
+        border-bottom-left-radius: 10px;
+        border-bottom-right-radius: 10px;
+        box-shadow: inset 0 3px 5px rgba(0,0,0,0.8);
+    }
+
+    .board {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Puzzle Blocks */
+    .block {
+        position: absolute;
+        border-radius: 10px;
+        cursor: grab;
+        transition: left 0.15s ease-out, top 0.15s ease-out;
+        box-shadow: 
+            inset 4px 4px 10px rgba(255,255,255,0.3), 
+            inset -4px -4px 10px rgba(0,0,0,0.3), 
+            3px 3px 8px rgba(0,0,0,0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .block.dragging {
+        transition: none;
+        z-index: 10;
+        cursor: grabbing;
+        box-shadow: 
+            inset 4px 4px 10px rgba(255,255,255,0.4), 
+            inset -4px -4px 10px rgba(0,0,0,0.4), 
+            8px 8px 15px rgba(0,0,0,0.8);
+        filter: brightness(1.1);
+    }
+
+    /* Block Patterns (Simulating physical indents) */
+    .block::after {
+        content: '';
+        position: absolute;
+        border: 2px solid rgba(0,0,0,0.2);
+        border-radius: inherit;
+        box-shadow: inset 2px 2px 5px rgba(0,0,0,0.3), 1px 1px 2px rgba(255,255,255,0.2);
+    }
+
+    .block-2x2 { background-color: var(--color-red); }
+    .block-2x2::after { width: 60%; height: 60%; border-radius: 50%; } /* Triangle indent is hard in CSS, using circle */
+
+    .block-1x2 { background-color: var(--color-blue); }
+    .block-1x2::after { width: 40%; height: 70%; border-radius: 20px; }
+
+    .block-2x1 { background-color: var(--color-blue); }
+    .block-2x1::after { width: 70%; height: 40%; border-radius: 20px; }
+
+    .block-1x1 { background-color: var(--color-yellow); }
+    .block-1x1::after { width: 40%; height: 40%; border-radius: 50%; }
+
+    /* Win Modal */
+    #win-modal {
+        display: none;
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8);
+        border-radius: 30px;
+        z-index: 20;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+    }
+    #win-modal.active {
+        display: flex;
+    }
+    #win-modal h2 {
+        font-size: 2rem;
+        color: var(--color-yellow);
+        margin-bottom: 20px;
+        text-shadow: 0 0 10px rgba(255, 214, 10, 0.5);
+    }
+    #win-modal button {
+        padding: 12px 24px;
+        font-size: 1.2rem;
+        background: var(--color-blue);
+        color: white;
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+</style>
+</head>
+<body>
+
+<div class="device">
+    <div class="control-panel">
+        <div class="led-map" id="led-map">
+            <!-- 20 pixels generated by JS -->
+        </div>
+        <div class="controls">
+            <div class="level-info" id="level-title">Lv. 01</div>
+            <div class="btn-group">
+                <button class="btn" id="btn-prev">◀</button>
+                <button class="btn" id="btn-next">▶</button>
+            </div>
+            <button class="btn" style="width: 100%; font-size: 1rem;" id="btn-reset">RESET</button>
+        </div>
+    </div>
+
+    <div class="board-container">
+        <div class="exit-zone"></div>
+        <div class="board" id="board">
+            <!-- Blocks generated by JS -->
+        </div>
+    </div>
+
+    <div id="win-modal">
+        <h2>CLEARED!</h2>
+        <button id="btn-next-level">Next Level</button>
+    </div>
+</div>
+
+<script>
+    // Level Data Definition
+    const levels = [
+        {
+            id: 1, name: "Lv. 01 (Starter)",
+            blocks: [
+                { id: 't', type: '2x2', x: 1, y: 0 },
+                { id: 'v1', type: '1x2', x: 0, y: 0 },
+                { id: 'v2', type: '1x2', x: 3, y: 0 },
+                { id: 'v3', type: '1x2', x: 0, y: 2 },
+                { id: 'v4', type: '1x2', x: 3, y: 2 },
+                { id: 'h1', type: '2x1', x: 1, y: 2 },
+                { id: 's1', type: '1x1', x: 1, y: 3 },
+                { id: 's2', type: '1x1', x: 2, y: 3 },
+                { id: 's3', type: '1x1', x: 0, y: 4 },
+                { id: 's4', type: '1x1', x: 3, y: 4 }
+                // Empty cells at (1,4), (2,4)
+            ]
+        },
+        {
+            id: 2, name: "Lv. 02 (Beginner)",
+            blocks: [
+                { id: 't', type: '2x2', x: 1, y: 0 },
+                { id: 'v1', type: '1x2', x: 0, y: 0 },
+                { id: 'v2', type: '1x2', x: 3, y: 0 },
+                { id: 'h1', type: '2x1', x: 1, y: 2 },
+                { id: 's1', type: '1x1', x: 1, y: 3 },
+                { id: 's2', type: '1x1', x: 2, y: 3 },
+                { id: 's3', type: '1x1', x: 0, y: 2 },
+                { id: 's4', type: '1x1', x: 3, y: 2 },
+                { id: 's5', type: '1x1', x: 0, y: 3 },
+                { id: 's6', type: '1x1', x: 3, y: 3 }
+                // Empty cells at (1,4), (2,4)
+            ]
+        },
+        {
+            id: 3, name: "Lv. 03 (Classic)",
+            blocks: [
+                { id: 't', type: '2x2', x: 1, y: 0 },
+                { id: 'v1', type: '1x2', x: 0, y: 0 },
+                { id: 'v2', type: '1x2', x: 3, y: 0 },
+                { id: 'v3', type: '1x2', x: 0, y: 2 },
+                { id: 'v4', type: '1x2', x: 3, y: 2 },
+                { id: 'h1', type: '2x1', x: 1, y: 2 },
+                { id: 's1', type: '1x1', x: 1, y: 3 },
+                { id: 's2', type: '1x1', x: 2, y: 3 },
+                { id: 's3', type: '1x1', x: 1, y: 4 },
+                { id: 's4', type: '1x1', x: 2, y: 4 }
+                // Empty cells at (0,4), (3,4)
+            ]
+        }
+    ];
+
+    // Block Definitions
+    const TYPES = {
+        '2x2': { w: 2, h: 2, color: 'var(--color-red)' },
+        '1x2': { w: 1, h: 2, color: 'var(--color-blue)' },
+        '2x1': { w: 2, h: 1, color: 'var(--color-blue)' },
+        '1x1': { w: 1, h: 1, color: 'var(--color-yellow)' }
+    };
+
+    let currentLevelIdx = 0;
+    let state = []; // Array of block objects
+    let grid = [];  // 5x4 2D Array
+
+    // DOM Elements
+    const boardEl = document.getElementById('board');
+    const ledMapEl = document.getElementById('led-map');
+    const titleEl = document.getElementById('level-title');
+    const winModal = document.getElementById('win-modal');
+
+    // Get cell size dynamically
+    function getCellSize() {
+        // Need to match CSS variable logic roughly or read computed style
+        const computed = getComputedStyle(document.documentElement).getPropertyValue('--cell-size');
+        // A hacky way is to create a dummy element, but we'll use CSS calc in styles directly.
+        // For JS, we just need the exact px width of the board divided by 4
+        return boardEl.clientWidth / 4; 
+    }
+
+    function initLevel(index) {
+        winModal.classList.remove('active');
+        currentLevelIdx = index;
+        const lvl = levels[index];
+        titleEl.textContent = lvl.name;
+        
+        // Deep copy the blocks
+        state = JSON.parse(JSON.stringify(lvl.blocks));
+        
+        renderBoard();
+        renderLEDMap();
+        updateGrid();
+    }
+
+    function renderLEDMap() {
+        ledMapEl.innerHTML = '';
+        // Create 20 pixels
+        let ledGrid = Array(5).fill().map(() => Array(4).fill(null));
+        
+        state.forEach(b => {
+            const t = TYPES[b.type];
+            for(let dy=0; dy<t.h; dy++) {
+                for(let dx=0; dx<t.w; dx++) {
+                    ledGrid[b.y + dy][b.x + dx] = t.color;
+                }
+            }
+        });
+
+        for(let y=0; y<5; y++) {
+            for(let x=0; x<4; x++) {
+                const px = document.createElement('div');
+                px.className = 'led-pixel';
+                if(ledGrid[y][x]) {
+                    px.style.backgroundColor = ledGrid[y][x];
+                }
+                ledMapEl.appendChild(px);
+            }
+        }
+    }
+
+    function renderBoard() {
+        boardEl.innerHTML = '';
+        state.forEach(block => {
+            const el = document.createElement('div');
+            el.className = `block block-${block.type}`;
+            el.id = `block-${block.id}`;
+            
+            // Set dimensions via CSS variables/percentages to be fully responsive
+            const t = TYPES[block.type];
+            el.style.width = `calc(100% / 4 * ${t.w} - var(--gap) * 2)`;
+            el.style.height = `calc(100% / 5 * ${t.h} - var(--gap) * 2)`;
+            
+            updateBlockPosition(el, block);
+            
+            // Event Listeners for Dragging
+            el.addEventListener('pointerdown', handlePointerDown);
+            boardEl.appendChild(el);
+            block.el = el;
+        });
+    }
+
+    function updateBlockPosition(el, block) {
+        el.style.left = `calc(100% / 4 * ${block.x} + var(--gap))`;
+        el.style.top = `calc(100% / 5 * ${block.y} + var(--gap))`;
+    }
+
+    function updateGrid() {
+        grid = Array(5).fill().map(() => Array(4).fill(null));
+        state.forEach(b => {
+            const t = TYPES[b.type];
+            for(let dy=0; dy<t.h; dy++) {
+                for(let dx=0; dx<t.w; dx++) {
+                    grid[b.y + dy][b.x + dx] = b.id;
+                }
+            }
+        });
+    }
+
+    // --- Drag Logic ---
+    let activeBlock = null;
+    let startX, startY;
+    let initialLeft, initialTop;
+    let cellSize = 0;
+    let dragAxis = null; // 'x' or 'y'
+    let bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+
+    function calculateBounds(block) {
+        const t = TYPES[block.type];
+        let maxLeft = 0, maxRight = 0, maxUp = 0, maxDown = 0;
+
+        // Check Left
+        for(let i = block.x - 1; i >= 0; i--) {
+            let clear = true;
+            for(let j=0; j<t.h; j++) if(grid[block.y + j][i] !== null) clear = false;
+            if(!clear) break;
+            maxLeft++;
+        }
+        // Check Right
+        for(let i = block.x + t.w; i < 4; i++) {
+            let clear = true;
+            for(let j=0; j<t.h; j++) if(grid[block.y + j][i] !== null) clear = false;
+            if(!clear) break;
+            maxRight++;
+        }
+        // Check Up
+        for(let j = block.y - 1; j >= 0; j--) {
+            let clear = true;
+            for(let i=0; i<t.w; i++) if(grid[j][block.x + i] !== null) clear = false;
+            if(!clear) break;
+            maxUp++;
+        }
+        // Check Down
+        for(let j = block.y + t.h; j < 5; j++) {
+            let clear = true;
+            for(let i=0; i<t.w; i++) if(grid[j][block.x + i] !== null) clear = false;
+            if(!clear) break;
+            maxDown++;
+        }
+
+        cellSize = getCellSize();
+        return {
+            minX: -maxLeft * cellSize,
+            maxX: maxRight * cellSize,
+            minY: -maxUp * cellSize,
+            maxY: maxDown * cellSize
+        };
+    }
+
+    function handlePointerDown(e) {
+        if(e.button !== 0 && e.type !== 'touchstart') return; // Only left click or touch
+        e.target.setPointerCapture(e.pointerId);
+        
+        activeBlock = state.find(b => `block-${b.id}` === e.target.id);
+        if(!activeBlock) return;
+
+        activeBlock.el.classList.add('dragging');
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        
+        // Initial computed style positions (px)
+        const style = window.getComputedStyle(activeBlock.el);
+        initialLeft = parseFloat(style.left);
+        initialTop = parseFloat(style.top);
+
+        dragAxis = null;
+        bounds = calculateBounds(activeBlock);
+
+        activeBlock.el.addEventListener('pointermove', handlePointerMove);
+        activeBlock.el.addEventListener('pointerup', handlePointerUp);
+        activeBlock.el.addEventListener('pointercancel', handlePointerUp);
+    }
+
+    function handlePointerMove(e) {
+        if(!activeBlock) return;
+        
+        let dx = e.clientX - startX;
+        let dy = e.clientY - startY;
+
+        // Determine primary axis after a small movement threshold
+        if(!dragAxis) {
+            if(Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                dragAxis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+            } else {
+                return; // Wait until threshold is met
+            }
+        }
+
+        // Clamp movement based on bounds
+        let visualLeft = initialLeft;
+        let visualTop = initialTop;
+
+        if(dragAxis === 'x') {
+            dx = Math.max(bounds.minX, Math.min(dx, bounds.maxX));
+            visualLeft = initialLeft + dx;
+        } else {
+            dy = Math.max(bounds.minY, Math.min(dy, bounds.maxY));
+            visualTop = initialTop + dy;
+        }
+
+        // Override CSS properties temporarily during drag (bypassing the calc())
+        activeBlock.el.style.left = `${visualLeft}px`;
+        activeBlock.el.style.top = `${visualTop}px`;
+    }
+
+    function handlePointerUp(e) {
+        if(!activeBlock) return;
+        
+        activeBlock.el.removeEventListener('pointermove', handlePointerMove);
+        activeBlock.el.removeEventListener('pointerup', handlePointerUp);
+        activeBlock.el.removeEventListener('pointercancel', handlePointerUp);
+        activeBlock.el.releasePointerCapture(e.pointerId);
+        activeBlock.el.classList.remove('dragging');
+
+        // Determine logical grid snapping
+        if(dragAxis) {
+            let dx = e.clientX - startX;
+            let dy = e.clientY - startY;
+
+            if(dragAxis === 'x') {
+                dx = Math.max(bounds.minX, Math.min(dx, bounds.maxX));
+                let cellsMoved = Math.round(dx / cellSize);
+                activeBlock.x += cellsMoved;
+            } else {
+                dy = Math.max(bounds.minY, Math.min(dy, bounds.maxY));
+                let cellsMoved = Math.round(dy / cellSize);
+                activeBlock.y += cellsMoved;
+            }
+
+            // Haptic Feedback
+            if(navigator.vibrate && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+                navigator.vibrate(15);
+            }
+        }
+
+        // Reset to CSS calc() based on logical coordinates
+        updateBlockPosition(activeBlock.el, activeBlock);
+        
+        activeBlock = null;
+        updateGrid();
+        checkWinCondition();
+    }
+
+    function checkWinCondition() {
+        const target = state.find(b => b.type === '2x2');
+        if(target.x === 1 && target.y === 3) {
+            // Target block reached the bottom exit
+            setTimeout(() => {
+                winModal.classList.add('active');
+            }, 300);
+        }
+    }
+
+    // UI Buttons
+    document.getElementById('btn-prev').addEventListener('click', () => {
+        if(currentLevelIdx > 0) initLevel(currentLevelIdx - 1);
+    });
+    
+    document.getElementById('btn-next').addEventListener('click', () => {
+        if(currentLevelIdx < levels.length - 1) initLevel(currentLevelIdx + 1);
+    });
+    
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        initLevel(currentLevelIdx);
+    });
+
+    document.getElementById('btn-next-level').addEventListener('click', () => {
+        if(currentLevelIdx < levels.length - 1) {
+            initLevel(currentLevelIdx + 1);
+        } else {
+            alert("모든 레벨을 클리어하셨습니다!");
+            initLevel(0);
+        }
+    });
+
+    // Start Game
+    initLevel(0);
+
+    // Prevent default context menu on long press
+    window.addEventListener('contextmenu', e => e.preventDefault());
+
+    // Adjust on window resize to ensure bounds recalculate properly
+    window.addEventListener('resize', () => {
+        state.forEach(block => {
+            updateBlockPosition(block.el, block);
+        });
+    });
+</script>
+</body>
+</html>
